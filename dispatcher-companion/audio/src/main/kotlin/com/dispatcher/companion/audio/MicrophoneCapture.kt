@@ -11,6 +11,7 @@ import android.media.MediaRecorder
 import android.os.SystemClock
 import com.dispatcher.companion.model.CaptureMethodId
 import com.dispatcher.companion.model.CaptureQuality
+import com.dispatcher.companion.model.PcmChunk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

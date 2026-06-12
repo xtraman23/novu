@@ -2,6 +2,7 @@ package com.dispatcher.companion.audio
 
 import com.dispatcher.companion.model.CaptureMethodId
 import com.dispatcher.companion.model.CaptureQuality
+import com.dispatcher.companion.model.PcmChunk
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

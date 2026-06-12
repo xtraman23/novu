@@ -15,6 +15,7 @@ dependencyResolutionManagement {
 rootProject.name = "dispatcher-companion"
 include(":core:model")
 include(":audio")
+include(":asr")
 include(":engine:extraction")
 include(":engine:negotiation")
 include(":engine:calculator")
