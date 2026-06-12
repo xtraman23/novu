@@ -13,7 +13,9 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "dispatcher-companion"
+include(":app")
 include(":core:model")
+include(":core:db")
 include(":audio")
 include(":asr")
 include(":ai")

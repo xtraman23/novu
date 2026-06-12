@@ -1,0 +1,106 @@
+package com.dispatcher.companion
+
+import com.dispatcher.companion.export.Exporter
+import com.dispatcher.companion.model.FieldKey
+import com.dispatcher.companion.model.FieldSource
+import com.dispatcher.companion.model.FieldValue
+import com.dispatcher.companion.model.RateActor
+import com.dispatcher.companion.model.RateEvent
+import com.dispatcher.companion.model.RateKind
+import com.dispatcher.companion.service.RcCallParser
+import com.dispatcher.companion.session.LocalSummaryGenerator
+import com.dispatcher.companion.wizard.SetupChecklist
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class RcCallParserTest {
+
+    @Test
+    fun `recognizes RingCentral packages`() {
+        assertTrue(RcCallParser.isRingCentral("com.glip.mobile"))
+        assertTrue(RcCallParser.isRingCentral("com.ringcentral.android"))
+        assertFalse(RcCallParser.isRingCentral("com.whatsapp"))
+    }
+
+    @Test
+    fun `ongoing call notifications are detected by cue or timer`() {
+        assertTrue(RcCallParser.looksLikeActiveCall("Mark Reynolds", "Ongoing call", true))
+        assertTrue(RcCallParser.looksLikeActiveCall("Mark Reynolds", "04:32", true))
+        assertFalse(RcCallParser.looksLikeActiveCall("Mark Reynolds", "Missed call", false))
+        assertFalse(RcCallParser.looksLikeActiveCall("New message", "Hey there", true))
+    }
+
+    @Test
+    fun `caller name strips boilerplate`() {
+        assertEquals("Mark Reynolds", RcCallParser.callerName("Mark Reynolds — Ongoing call"))
+    }
+}
+
+class SetupChecklistTest {
+
+    @Test
+    fun `notification listener flat-string parsing`() {
+        val flat = "com.other/app.Listener:com.dispatcher.companion/com.dispatcher.companion.service.RcNotificationListener"
+        assertTrue(SetupChecklist.listenerEnabled(flat, "com.dispatcher.companion"))
+        assertFalse(SetupChecklist.listenerEnabled(flat, "com.nope"))
+        assertFalse(SetupChecklist.listenerEnabled(null, "com.dispatcher.companion"))
+    }
+}
+
+class LocalSummaryGeneratorTest {
+
+    private val fields = mapOf(
+        FieldKey.PICKUP to FieldValue("Dallas, TX", 0.9, FieldSource.REGEX),
+        FieldKey.DELIVERY to FieldValue("Atlanta, GA", 0.9, FieldSource.REGEX),
+        FieldKey.RATE to FieldValue("$2,000", 0.9, FieldSource.REGEX),
+        FieldKey.WEIGHT to FieldValue("42,000 lbs", 0.9, FieldSource.REGEX),
+    )
+    private val rates = listOf(
+        RateEvent(0, RateActor.BROKER, 1700.0, RateKind.OFFER),
+        RateEvent(9_000, RateActor.DISPATCHER, 2000.0, RateKind.AGREED),
+    )
+
+    @Test
+    fun `summary contains lane, rate, outcome and negotiation path`() {
+        val s = LocalSummaryGenerator.generate(fields, rates, emptyList(), "BOOKED")
+        assertEquals("Dallas, TX → Atlanta, GA", s.lane)
+        assertTrue("$2,000" in s.summaryShort)
+        assertTrue("BOOKED" in s.summaryShort)
+        assertTrue("$1,700 → $2,000" in s.summaryDetailed)
+        assertTrue(s.summaryBullets.lines().all { it.startsWith("- ") })
+        assertTrue("rate confirmation" in s.followUpActions)
+    }
+
+    @Test
+    fun `empty extraction still yields a usable summary`() {
+        val s = LocalSummaryGenerator.generate(emptyMap(), emptyList(), emptyList(), "FOLLOW_UP")
+        assertEquals("Lane unknown", s.lane)
+        assertTrue("Call broker back" in s.followUpActions)
+    }
+}
+
+class ExporterTest {
+
+    private val summary = LocalSummaryGenerator.generate(
+        mapOf(FieldKey.PICKUP to FieldValue("Dallas, TX", 0.9, FieldSource.REGEX)),
+        emptyList(), emptyList(), "BOOKED",
+    )
+
+    @Test
+    fun `txt export carries the full summary`() {
+        val txt = Exporter.toTxt(summary)
+        assertTrue("CALL SUMMARY" in txt)
+        assertTrue("Follow-up:" in txt)
+    }
+
+    @Test
+    fun `csv export is well-formed and escapes quotes`() {
+        val csv = Exporter.toCsv(summary.copy(keyDetails = """He said "book it""""))
+        val lines = csv.lines()
+        assertEquals(2, lines.size)
+        assertEquals(5, lines[0].split(',').size)
+        assertTrue("\"\"book it\"\"" in lines[1])
+    }
+}
