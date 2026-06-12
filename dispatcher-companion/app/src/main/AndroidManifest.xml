@@ -12,8 +12,9 @@
 
     <application
         android:name=".DispatcherApp"
-        android:label="Dispatcher Companion"
+        android:label="Dispatcher"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:supportsRtl="true">
 

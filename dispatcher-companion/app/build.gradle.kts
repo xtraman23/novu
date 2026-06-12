@@ -18,8 +18,20 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
+    signingConfigs {
+        // Personal sideload key so every build installs/updates with one tap.
+        // Replace with a private keystore before any store distribution.
+        create("release") {
+            storeFile = file("dispatcher-release.jks")
+            storePassword = "dispatcher14c"
+            keyAlias = "dispatcher"
+            keyPassword = "dispatcher14c"
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
