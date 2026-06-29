@@ -12,8 +12,8 @@ android {
         applicationId = "com.dispatcher.companion"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
         // Redmi 14C (Helio G81-Ultra) is arm64; keep v7a for older handsets.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -49,6 +49,7 @@ android {
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:db"))
+    implementation(project(":core:report"))
     implementation(project(":audio"))
     implementation(project(":asr"))
     implementation(project(":ai"))

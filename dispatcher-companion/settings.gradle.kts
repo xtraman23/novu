@@ -16,6 +16,8 @@ rootProject.name = "dispatcher-companion"
 include(":app")
 include(":core:model")
 include(":core:db")
+include(":core:report")
+include(":desktop")
 include(":audio")
 include(":asr")
 include(":ai")

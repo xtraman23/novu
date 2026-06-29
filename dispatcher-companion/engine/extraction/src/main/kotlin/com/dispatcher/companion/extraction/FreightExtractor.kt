@@ -43,7 +43,7 @@ class FreightExtractor {
     private val laneCue = Regex("""([A-Z][a-z]+(?: [A-Z][a-z]+)?(?:,? [A-Z]{2})?) (?:to|over to) ([A-Z][a-z]+(?: [A-Z][a-z]+)?(?:,? [A-Z]{2})?)""")
 
     private val numericRate = Regex("""\$\s?(\d{1,2},\d{3}|\d{3,5})\b|\b(\d{1,2},\d{3}|\d{3,5})\s*(?:bucks|dollars)\b""")
-    private val rateContext = Regex("""\b(rate|pay(?:s|ing)?|have|do it|give|offer|money|in it|all[- ]in|book it)\b""", RegexOption.IGNORE_CASE)
+    private val rateContext = Regex("""\b(rate|pay(?:s|ing)?|have|do it|can do|give|offer|money|in it|on it|all[- ]in|book it|to you|for the (?:load|run)|line\s?haul|flat)\b""", RegexOption.IGNORE_CASE)
 
     private val weight = Regex("""\b(\d{1,3}(?:,\d{3})|\d{4,6})\s*(?:lbs?|pounds)\b|\b(\d{1,3})k\s*(?:lbs?|pounds)?\b""", RegexOption.IGNORE_CASE)
     private val mcNumber = Regex("""\bMC\s*(?:number\s*)?(?:is\s*)?#?\s*(\d{4,8})\b""", RegexOption.IGNORE_CASE)

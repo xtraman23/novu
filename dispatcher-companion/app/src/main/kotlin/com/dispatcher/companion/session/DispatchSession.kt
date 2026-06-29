@@ -28,6 +28,7 @@ class DispatchSession(private val db: DispatcherDb?) {
 
     private val extractor = FreightExtractor()
     private val analyzer = NegotiationAnalyzer()
+    private var context = com.dispatcher.companion.extraction.ConversationContext()
     private var assembler = TranscriptAssembler(TurnTakingDiarizer())
     private var callId: Long = -1
 
@@ -61,6 +62,7 @@ class DispatchSession(private val db: DispatcherDb?) {
     fun start(method: CaptureMethodId, quality: CaptureQuality) {
         if (_active.value) return
         assembler = TranscriptAssembler(TurnTakingDiarizer())
+        context = com.dispatcher.companion.extraction.ConversationContext()
         rateEvents.clear()
         _transcript.value = emptyList()
         _fields.value = emptyMap()
@@ -80,8 +82,13 @@ class DispatchSession(private val db: DispatcherDb?) {
         _transcript.value = _transcript.value + segment
         db?.takeIf { callId > 0 }?.insertSegment(callId, segment)
 
+        // Q&A calls: fill the field a prior utterance's question asked for.
+        context.resolveAnswer(segment.text, _fields.value)?.let { (key, value) ->
+            _fields.value = PdwcrMerger.merge(_fields.value, key, FieldValue(value, 0.8, FieldSource.REGEX))
+        }
         val result = extractor.extractSegment(segment, _fields.value)
         _fields.value = result.fields
+        context.noteQuestion(segment.text)
         result.rateEvents.forEach { e ->
             rateEvents += e
             db?.takeIf { callId > 0 }?.insertRateEvent(callId, e)
