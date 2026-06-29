@@ -1,5 +1,7 @@
 package com.dispatcher.companion
 
+import android.speech.SpeechRecognizer
+import com.dispatcher.companion.asr.RecognizerRestartPolicy
 import com.dispatcher.companion.export.Exporter
 import com.dispatcher.companion.model.FieldKey
 import com.dispatcher.companion.model.FieldSource
@@ -46,6 +48,46 @@ class SetupChecklistTest {
         assertTrue(SetupChecklist.listenerEnabled(flat, "com.dispatcher.companion"))
         assertFalse(SetupChecklist.listenerEnabled(flat, "com.nope"))
         assertFalse(SetupChecklist.listenerEnabled(null, "com.dispatcher.companion"))
+    }
+}
+
+class RecognizerRestartPolicyTest {
+
+    @Test
+    fun `quiet stretches re-arm quickly so listening never stops`() {
+        for (code in listOf(SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
+            val d = RecognizerRestartPolicy.afterError(code)
+            assertTrue(d.restart)
+            assertTrue(d.delayMs <= 200)
+        }
+    }
+
+    @Test
+    fun `recognizer busy backs off before retrying`() {
+        val d = RecognizerRestartPolicy.afterError(SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
+        assertTrue(d.restart)
+        assertTrue(d.delayMs >= 400, "busy must back off, was ${d.delayMs}")
+    }
+
+    @Test
+    fun `transient network and audio errors restart with a longer delay`() {
+        for (code in listOf(
+            SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_SERVER,
+            SpeechRecognizer.ERROR_CLIENT, SpeechRecognizer.ERROR_AUDIO,
+        )) {
+            assertTrue(RecognizerRestartPolicy.afterError(code).restart)
+        }
+    }
+
+    @Test
+    fun `missing permission is permanent - the loop stops`() {
+        val d = RecognizerRestartPolicy.afterError(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS)
+        assertFalse(d.restart)
+    }
+
+    @Test
+    fun `unknown error codes still retry rather than dying silently`() {
+        assertTrue(RecognizerRestartPolicy.afterError(9999).restart)
     }
 }
 
