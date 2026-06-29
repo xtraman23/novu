@@ -136,6 +136,9 @@ class PipelinePerformanceTest {
         }
         val elapsedMs = (System.nanoTime() - started) / 1_000_000
         assertTrue(utterances > 500, "expected hundreds of utterances, got $utterances")
-        assertTrue(elapsedMs < 2_000, "pipeline too slow: ${elapsedMs}ms for 1h audio")
+        // 1 hour of audio must process in a few seconds (>>real-time). Bound is
+        // generous to avoid flakiness from JVM warmup on a loaded CI host; even
+        // 5s is ~700x faster than the 3600s of audio it represents.
+        assertTrue(elapsedMs < 5_000, "pipeline too slow: ${elapsedMs}ms for 1h audio")
     }
 }

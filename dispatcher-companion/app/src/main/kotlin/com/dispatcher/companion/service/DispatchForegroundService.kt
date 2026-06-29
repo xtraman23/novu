@@ -11,6 +11,8 @@ import android.content.pm.ServiceInfo
 import android.os.IBinder
 import com.dispatcher.companion.ServiceLocator
 import com.dispatcher.companion.asr.SpeechRecognizerAsr
+import com.dispatcher.companion.export.CallArchive
+import com.dispatcher.companion.export.Exporter
 import com.dispatcher.companion.model.CaptureMethodId
 import com.dispatcher.companion.model.CaptureQuality
 import com.dispatcher.companion.overlay.CopilotOverlay
@@ -60,8 +62,27 @@ class DispatchForegroundService : Service() {
     private fun stopDispatch() {
         asr?.stop(); asr = null
         overlay?.hide(); overlay = null
-        if (ServiceLocator.session.active.value) {
-            ServiceLocator.session.stop(outcome = "UNKNOWN")
+        val session = ServiceLocator.session
+        if (session.active.value) {
+            session.stop(outcome = "UNKNOWN")
+            archiveCall()
+        }
+    }
+
+    /** Persist the full transcript and the info-only file as two separate
+     *  files in Documents/DispatcherCompanion (FR-800). Never crashes a call. */
+    private fun archiveCall() {
+        runCatching {
+            val session = ServiceLocator.session
+            val ts = System.currentTimeMillis()
+            Exporter.saveToDocuments(
+                this, "transcript_$ts.txt",
+                CallArchive.transcriptText(session.transcript.value),
+            )
+            Exporter.saveToDocuments(
+                this, "info_$ts.txt",
+                CallArchive.infoText(session.fields.value, session.rateEventsSnapshot()),
+            )
         }
     }
 

@@ -52,14 +52,26 @@ object Exporter {
         cm.setPrimaryClip(ClipData.newPlainText("Call summary", toTxt(s)))
     }
 
-    fun share(context: Context, s: CallSummary) {
+    fun share(context: Context, s: CallSummary) = shareText(context, "Call summary — ${s.lane}", toTxt(s))
+
+    /** Share any text (used for the separate transcript / info exports). */
+    fun shareText(context: Context, subject: String, body: String) {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Call summary — ${s.lane}")
-            putExtra(Intent.EXTRA_TEXT, toTxt(s))
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            putExtra(Intent.EXTRA_TEXT, body)
         }
         context.startActivity(
-            Intent.createChooser(intent, "Export summary").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Intent.createChooser(intent, subject).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
+    }
+
+    /** Save text to the app's Documents folder so it persists on the phone. */
+    fun saveToDocuments(context: Context, filename: String, body: String): File {
+        val dir = File(
+            context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS),
+            "DispatcherCompanion",
+        ).apply { mkdirs() }
+        return File(dir, filename).apply { writeText(body) }
     }
 }

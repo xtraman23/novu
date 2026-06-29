@@ -125,6 +125,65 @@ class FreightExtractorTest {
     }
 
     @Test
+    fun `captures FCFS and assigns it to pickup`() {
+        val r = x.extractSegment(seg(1, Speaker.BROKER, "Pickup is FCFS, no appointment needed"))
+        assertEquals("FCFS", r.fields[FieldKey.APPOINTMENT_PICKUP]?.text)
+    }
+
+    @Test
+    fun `appointment at delivery goes to the delivery slot`() {
+        val r = x.extractSegment(seg(1, Speaker.BROKER, "Delivery is by appointment only"))
+        assertEquals("By appointment", r.fields[FieldKey.APPOINTMENT_DELIVERY]?.text)
+    }
+
+    @Test
+    fun `accumulates multiple special requirements across segments`() {
+        var f = x.extractSegment(seg(1, Speaker.BROKER, "It's a drop and hook, no-touch freight")).fields
+        f = x.extractSegment(seg(2, Speaker.BROKER, "Oh and it's hazmat, you'll need tarps"), f).fields
+        val special = f[FieldKey.SPECIAL_REQUIREMENTS]?.text ?: ""
+        assertTrue("Drop & hook" in special, special)
+        assertTrue("No-touch freight" in special, special)
+        assertTrue("Hazmat" in special, special)
+        assertTrue("Tarps" in special, special)
+    }
+
+    @Test
+    fun `recognizes broker equipment synonyms`() {
+        assertEquals("REEFER", x.extractSegment(seg(1, Speaker.BROKER, "Need a temp controlled trailer")).fields[FieldKey.EQUIPMENT]?.text)
+        assertEquals("POWER_ONLY", x.extractSegment(seg(1, Speaker.BROKER, "This is power only")).fields[FieldKey.EQUIPMENT]?.text)
+        assertEquals("RGN", x.extractSegment(seg(1, Speaker.BROKER, "Goes on an RGN")).fields[FieldKey.EQUIPMENT]?.text)
+    }
+
+    @Test
+    fun `word-boundary matching avoids false equipment hits`() {
+        // "Sullivan" must not trigger DRY_VAN via "van"
+        assertNull(x.extractSegment(seg(1, Speaker.BROKER, "Broker is Mike from Sullivan County")).fields[FieldKey.EQUIPMENT])
+    }
+
+    @Test
+    fun `extracts pickup and delivery ZIPs from broker shorthand`() {
+        val r = x.extractSegment(seg(1, Speaker.BROKER, "Picking up 75201 and delivering to 30303"))
+        assertEquals("75201", r.fields[FieldKey.PICKUP_ZIP]?.text)
+        assertEquals("30303", r.fields[FieldKey.DELIVERY_ZIP]?.text)
+    }
+
+    @Test
+    fun `lumper and team are captured as requirements`() {
+        val r = x.extractSegment(seg(1, Speaker.BROKER, "There's a lumper fee and it needs a team"))
+        val special = r.fields[FieldKey.SPECIAL_REQUIREMENTS]?.text ?: ""
+        assertTrue("Lumper fee" in special)
+        assertTrue("Team" in special)
+    }
+
+    @Test
+    fun `detention captures a short phrase not the whole sentence`() {
+        val r = x.extractSegment(seg(1, Speaker.BROKER, "We pay detention after two hours at the dock, fifty an hour"))
+        val d = r.fields[FieldKey.DETENTION]?.text ?: ""
+        assertTrue(d.startsWith("detention", ignoreCase = true))
+        assertTrue(d.length < 50)
+    }
+
+    @Test
     fun `per-segment extraction is fast enough for live use`() {
         val s = seg(1, Speaker.BROKER,
             "I got 42,000 lbs of produce picking up in Fresno, CA going to Denver, CO for $2,400 on a reefer")

@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dispatcher.companion.ServiceLocator
 import com.dispatcher.companion.calculator.LaneResult
+import com.dispatcher.companion.export.CallArchive
 import com.dispatcher.companion.export.Exporter
 import com.dispatcher.companion.model.FieldKey
 import com.dispatcher.companion.model.Speaker
@@ -208,10 +209,34 @@ private fun LiveScreen() {
                     Column(Modifier.padding(14.dp)) {
                         SectionTitle("CALL SUMMARY")
                         Text(s.summaryBullets, fontSize = 13.sp)
+                        Text(
+                            "Saved automatically to Documents/DispatcherCompanion " +
+                                "(transcript + info as separate files).",
+                            fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { Exporter.toClipboard(context, s) }) { Text("COPY") }
-                            Button(onClick = { Exporter.share(context, s) }) { Text("SHARE") }
+                            Button(onClick = { Exporter.share(context, s) }) { Text("SUMMARY") }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = {
+                                Exporter.shareText(
+                                    context, "Full transcript — ${s.lane}",
+                                    CallArchive.transcriptText(ServiceLocator.session.transcript.value),
+                                )
+                            }) { Text("TRANSCRIPT") }
+                            Button(onClick = {
+                                Exporter.shareText(
+                                    context, "Load info — ${s.lane}",
+                                    CallArchive.infoText(
+                                        ServiceLocator.session.fields.value,
+                                        ServiceLocator.session.rateEventsSnapshot(),
+                                    ),
+                                )
+                            }) { Text("INFO") }
                         }
                     }
                 }

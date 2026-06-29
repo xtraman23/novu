@@ -54,6 +54,9 @@ class DispatchSession(private val db: DispatcherDb?) {
 
     private val rateEvents = mutableListOf<RateEvent>()
 
+    /** Snapshot of the negotiation path for the info export. */
+    fun rateEventsSnapshot(): List<RateEvent> = rateEvents.toList()
+
     @Synchronized
     fun start(method: CaptureMethodId, quality: CaptureQuality) {
         if (_active.value) return

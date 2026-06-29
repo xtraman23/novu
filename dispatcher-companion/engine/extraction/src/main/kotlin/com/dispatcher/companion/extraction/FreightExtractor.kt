@@ -45,23 +45,18 @@ class FreightExtractor {
     private val numericRate = Regex("""\$\s?(\d{1,2},\d{3}|\d{3,5})\b|\b(\d{1,2},\d{3}|\d{3,5})\s*(?:bucks|dollars)\b""")
     private val rateContext = Regex("""\b(rate|pay(?:s|ing)?|have|do it|give|offer|money|in it|all[- ]in|book it)\b""", RegexOption.IGNORE_CASE)
 
-    private val weight = Regex("""\b(\d{1,3}(?:,\d{3})|\d{4,6})\s*(?:lbs?|pounds)\b|\b(\d{1,3})k\s*(?:lbs?|pounds)\b""", RegexOption.IGNORE_CASE)
+    private val weight = Regex("""\b(\d{1,3}(?:,\d{3})|\d{4,6})\s*(?:lbs?|pounds)\b|\b(\d{1,3})k\s*(?:lbs?|pounds)?\b""", RegexOption.IGNORE_CASE)
     private val mcNumber = Regex("""\bMC\s*(?:number\s*)?(?:is\s*)?#?\s*(\d{4,8})\b""", RegexOption.IGNORE_CASE)
     private val zipCue = Regex("""\bzip(?: code)?\s*(?:is\s*)?(\d{5})\b""", RegexOption.IGNORE_CASE)
+    private val pickupZipCue = Regex("""(?i:pick(?:s|ing)?\s*up|pickup|picking up|origin|shipper)\D{0,18}(\d{5})\b""")
+    private val deliveryZipCue = Regex("""(?i:deliver(?:y|ing)?|drop|consignee|receiver|destination)\D{0,18}(\d{5})\b""")
     private val lengthFt = Regex("""\b(\d{2})\s*(?:'|ft\b|foot\b|-foot\b)""")
-    private val timeCue = Regex("""\b(?:at|by)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|\d{4} hours)\b""", RegexOption.IGNORE_CASE)
+    private val timeCue = Regex("""\b(?:at|by)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|\d{4}\s*hours)\b""", RegexOption.IGNORE_CASE)
+    private val detentionCue = Regex("""(detention[^.;,!?]{0,45})""", RegexOption.IGNORE_CASE)
+    private val layoverCue = Regex("""(layover[^.;,!?]{0,45})""", RegexOption.IGNORE_CASE)
 
-    private val equipment = listOf(
-        "dry van" to "DRY_VAN", "reefer" to "REEFER", "flatbed" to "FLATBED",
-        "step deck" to "STEP_DECK", "power only" to "POWER_ONLY",
-        "box truck" to "BOX_TRUCK", "hotshot" to "HOTSHOT", "conestoga" to "CONESTOGA",
-        "van" to "DRY_VAN",
-    )
-    private val commodities = listOf(
-        "dry goods", "paper products", "paper", "produce", "frozen food", "frozen",
-        "steel", "lumber", "electronics", "beverages", "bottled water", "water",
-        "furniture", "auto parts", "general freight", "food grade", "machinery",
-    )
+    private val equipment = BrokerLexicon.equipment
+    private val commodities = BrokerLexicon.commodities
 
     /** Incrementally extract from one new segment, merging into [current]. */
     fun extractSegment(
@@ -126,32 +121,59 @@ class FreightExtractor {
             if (lbs in 100..60_000) put(FieldKey.WEIGHT, "%,d lbs".format(lbs), 0.9)
         }
 
-        // --- Commodity (gazetteer, longest match first)
-        commodities.sortedByDescending { it.length }
-            .firstOrNull { text.contains(it, ignoreCase = true) }
-            ?.let { put(FieldKey.COMMODITY, it.split(' ').joinToString(" ") { w -> w.replaceFirstChar(Char::uppercase) }, 0.75) }
+        // --- Commodity (word-boundary gazetteer, longest match first)
+        commodities.sortedByDescending { it.second.length }
+            .firstOrNull { it.first.containsMatchIn(text) }
+            ?.let { put(FieldKey.COMMODITY, it.second, 0.75) }
 
         // --- Equipment + length
-        equipment.firstOrNull { text.contains(it.first, ignoreCase = true) }
+        equipment.firstOrNull { it.first.containsMatchIn(text) }
             ?.let { put(FieldKey.EQUIPMENT, it.second, 0.9) }
         lengthFt.find(text)?.let { m ->
             val ft = m.groupValues[1].toInt()
             if (ft in 20..53) put(FieldKey.LENGTH_FT, ft.toString(), 0.85)
         }
 
-        // --- MC, ZIP, appointment
+        // --- MC
         mcNumber.find(text)?.let { put(FieldKey.MC_NUMBER, it.groupValues[1], 0.95) }
+
+        // --- ZIPs: directional cue first, then a bare "zip is NNNNN" fallback
+        pickupZipCue.find(text)?.let { put(FieldKey.PICKUP_ZIP, it.groupValues[1], 0.88) }
+        deliveryZipCue.find(text)?.let { put(FieldKey.DELIVERY_ZIP, it.groupValues[1], 0.88) }
         zipCue.find(text)?.let { m ->
             val key = if (fields[FieldKey.PICKUP_ZIP] == null) FieldKey.PICKUP_ZIP else FieldKey.DELIVERY_ZIP
             put(key, m.groupValues[1], 0.8)
         }
-        timeCue.find(text)?.let { m ->
-            val key = if (fields[FieldKey.APPOINTMENT_PICKUP] == null) FieldKey.APPOINTMENT_PICKUP
-            else FieldKey.APPOINTMENT_DELIVERY
-            put(key, m.groupValues[1], 0.7)
+
+        // --- Appointment / FCFS (broker scheduling vocabulary)
+        val apptValue = when {
+            timeCue.containsMatchIn(text) -> timeCue.find(text)!!.groupValues[1].trim()
+            BrokerLexicon.fcfs.containsMatchIn(text) -> "FCFS"
+            BrokerLexicon.appointment.containsMatchIn(text) -> "By appointment"
+            else -> null
         }
-        if (text.contains("detention", ignoreCase = true)) put(FieldKey.DETENTION, text, 0.7)
-        if (text.contains("layover", ignoreCase = true)) put(FieldKey.LAYOVER, text, 0.7)
+        if (apptValue != null) {
+            val preferDelivery = BrokerLexicon.deliveryHint.containsMatchIn(text) &&
+                !BrokerLexicon.pickupHint.containsMatchIn(text)
+            val key = if (preferDelivery) {
+                if (fields[FieldKey.APPOINTMENT_DELIVERY] == null) FieldKey.APPOINTMENT_DELIVERY
+                else FieldKey.APPOINTMENT_PICKUP
+            } else {
+                if (fields[FieldKey.APPOINTMENT_PICKUP] == null) FieldKey.APPOINTMENT_PICKUP
+                else FieldKey.APPOINTMENT_DELIVERY
+            }
+            put(key, apptValue, 0.75)
+        }
+
+        // --- Special requirements: accumulate matched tags across the call
+        val tags = BrokerLexicon.specialRequirements
+            .filter { it.first.containsMatchIn(text) }
+            .map { it.second }
+        if (tags.isNotEmpty()) fields = addSpecial(fields, tags)
+
+        // --- Detention / layover: capture a short phrase, not the whole line
+        detentionCue.find(text)?.let { put(FieldKey.DETENTION, it.groupValues[1].trim(), 0.7) }
+        layoverCue.find(text)?.let { put(FieldKey.LAYOVER, it.groupValues[1].trim(), 0.7) }
 
         return ExtractionResult(fields, events)
     }
@@ -166,6 +188,25 @@ class FreightExtractor {
             events += r.rateEvents
         }
         return ExtractionResult(fields, events)
+    }
+
+    /**
+     * Special requirements accumulate (a load can be FCFS + hazmat + tarps),
+     * unlike single-value fields. Manual edits stay sticky.
+     */
+    private fun addSpecial(
+        current: Map<FieldKey, FieldValue>,
+        tags: List<String>,
+    ): Map<FieldKey, FieldValue> {
+        val existing = current[FieldKey.SPECIAL_REQUIREMENTS]
+        if (existing?.source == FieldSource.MANUAL) return current
+        val merged = buildSet {
+            existing?.text?.split(", ")?.filter { it.isNotBlank() }?.let(::addAll)
+            addAll(tags)
+        }.sorted().joinToString(", ")
+        return PdwcrMerger.merge(
+            current, FieldKey.SPECIAL_REQUIREMENTS, FieldValue(merged, 0.8, FieldSource.REGEX),
+        )
     }
 
     private fun extractPlaceAfter(cue: Regex, text: String): Pair<String, String?>? {
